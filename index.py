@@ -1,8 +1,8 @@
 import tkinter as tk
+import matplotlib.pyplot as plt
 from tkinter import Button, Entry, Frame, OptionMenu, Text, font, Canvas, ttk
-import time
-import itertools
 import heapq
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import math
 import timeit
 import numpy as np
@@ -40,10 +40,80 @@ main_frame.pack(side=tk.LEFT, expand=True, fill="both")  # Expand and fill the a
 main_frame.pack_propagate(False)
 main_frame.configure(width=1185, height=1024)
 
+# Read coordinates from a CSV file
+def read_coordinates(file_path):
+    coordinates = pd.read_csv(file_path, header=None, names=['City', 'Latitude', 'Longitude'])
+    return coordinates.set_index('City').to_dict(orient='index')
+
+coordinates = read_coordinates('coordinates.csv')
+
+fig, ax = plt.subplots(figsize=(16, 10))  # Increase the figure size for a larger map
+node_color = 'black'
+
+adjacencies = {}
+canvas = None
+
+def display_map(coordinates, start_town=None, end_town=None):
+    global adjacencies, canvas
+
+    node_color = 'black'
+
+    # Iterate through the cities and create rectangles based on latitude and longitude
+    for city, coord in coordinates.items():
+        lat = coord['Latitude']
+        lon = coord['Longitude']
+
+        # Convert latitude and longitude to x and y coordinates
+        x = lon
+        y = lat
+
+        if city == start_town:
+            node_color = 'blue'  # Set the color for the starting city
+        elif city == end_town:
+            node_color = 'red'  # Set the color for the ending city
+        else:
+            node_color = 'black'
+
+        # Make all node circles the same color
+        ax.plot(x, y, 'o', markersize=10, alpha=0.5, color=node_color, label=city)
+
+        # Display the city name on the node
+        # Adjust the y-coordinate of the label to move it slightly higher
+        label_y_offset = 0.03  # Adjust this value as needed
+        plt.text(x, y + label_y_offset, city, fontsize=7, ha='center', va='bottom')
+        
+        if city in adjacencies:
+            for adjacent_city in adjacencies[city]:
+                if adjacent_city in coordinates:
+                    adj_coords = coordinates[adjacent_city]
+                    adj_x, adj_y = adj_coords['Longitude'], adj_coords['Latitude']
+                    plt.plot([x, adj_x], [y, adj_y], linestyle='-', color='black', alpha=0.2)
+    
+    plt.title("Display Route Map", y=1.05)
+    inform_text = "Blue = Start Town, Red = End Town, Black = Visited Town"
+    plt.text(0.5, 1.02, inform_text, fontsize=12, ha='center', va='center', transform=ax.transAxes)
+    
+    # Remove the rectangular frame
+    ax.axis('off')
+    
+    # Make a separate Tkinter canvas to embed the Matplotlib figure
+    canvas = FigureCanvasTkAgg(fig, master=main_frame)
+    canvas_widget = canvas.get_tk_widget()
+    canvas_widget.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+
+# Define a variable to keep track of whether the route is currently displayed
+displayedRoute = False
+
+# Store the current route to this variable
+route = []
+
 # Create a canvas in the main_frame
 canvas = Canvas(main_frame, bg='white')
 canvas.pack(fill="both", expand=True)  # Fill and expand the canvas to the available space
 canvas.configure(height=1024)
+
+# Call the function to display the map
+display_map(coordinates)
 
 # Main Menu
 main_menu = tk.Menu(window)
@@ -104,7 +174,7 @@ searchInput()
 
 # Create a search button
 def perform_search():
-    global result_text, resultTitle  # Reference the global result_text variable
+    global result_text, resultTitle, displayedRoute, route  # Reference the global result_text variable
     start_town = textbox1.get()
     end_town = textbox2.get()
 
@@ -137,6 +207,10 @@ def perform_search():
     result_text = Text(options_frame, font=('Times', 12), width=40, height=10, bg='#ffffff', highlightthickness=0, borderwidth=0)
     result_text.pack(pady=(10, 0), padx=(40, 20))
 
+    ax.clear()
+    display_map(coordinates, start_town, end_town)
+    displayedRoute = False
+
     if input_search_method == 'Breadth-First Search':
         # Measure execution time using timeit
         start_time = timeit.default_timer()
@@ -144,6 +218,10 @@ def perform_search():
         end_time = timeit.default_timer()
         
         if route:
+            # Plot the cities in the route and connect them with lines
+            plot_route(route)
+            # Set displayedRoute to True to indicate that the route is displayed
+            displayedRoute = True
             result_text.delete(1.0, tk.END)
             result_text.insert(tk.END, f"Shortest Route (BFS): {' -> '.join(route)}\n")
             result_text.insert(tk.END, f"Total Distance: {len(route) - 1} nodes\n")
@@ -160,12 +238,15 @@ def perform_search():
         end_time = timeit.default_timer()
 
         if route:
+            # Plot the cities in the route and connect them with lines
+            plot_route(route)
+            # Set displayedRoute to True to indicate that the route is displayed
+            displayedRoute = True
             result_text.delete(1.0, tk.END)
             result_text.insert(tk.END, f"Shortest Route (Depth-First Search): {' -> '.join(route)}\n")
             result_text.insert(tk.END, f"Total Distance: {len(route) - 1} nodes\n")
             result_text.insert(tk.END, f"Total Distance: {total_distance(route, coordinates):.2f} kilometers\n")
             result_text.insert(tk.END, f"Time Taken: {end_time - start_time:.6f} seconds")
-
         else:
             result_text.delete(1.0, tk.END)
             result_text.insert(tk.END, "No route found using Depth-First Search.")
@@ -177,6 +258,10 @@ def perform_search():
         end_time = timeit.default_timer()
 
         if route:
+            # Plot the cities in the route and connect them with lines
+            plot_route(route)
+            # Set displayedRoute to True to indicate that the route is displayed
+            displayedRoute = True
             result_text.delete(1.0, tk.END)
             result_text.insert(tk.END, f"Shortest Route (Iterative Deepening DFS): {' -> '.join(route)}\n")
             result_text.insert(tk.END, f"Total Distance: {len(route) - 1} nodes\n")
@@ -196,6 +281,10 @@ def perform_search():
         end_time = timeit.default_timer()
 
         if route:
+            # Plot the cities in the route and connect them with lines
+            plot_route(route)
+            # Set displayedRoute to True to indicate that the route is displayed
+            displayedRoute = True
             result_text.delete(1.0, tk.END)
             result_text.insert(tk.END, f"Shortest Route (Best-First Search): {' -> '.join(route)}\n")
             result_text.insert(tk.END, f"Total Distance: {len(route) - 1} nodes\n")
@@ -215,6 +304,10 @@ def perform_search():
         end_time = timeit.default_timer()
 
         if route:
+            # Plot the cities in the route and connect them with lines
+            plot_route(route)
+            # Set displayedRoute to True to indicate that the route is displayed
+            displayedRoute = True
             result_text.delete(1.0, tk.END)
             result_text.insert(tk.END, f"Shortest Route (A* Search): {' -> '.join(route)}\n")
             result_text.insert(tk.END, f"Total Distance: {len(route) - 1} nodes\n")
@@ -223,6 +316,28 @@ def perform_search():
         else:
             result_text.delete(1.0, tk.END)
             result_text.insert(tk.END, "No route found using A* Search.")
+
+def plot_route(route):
+    route_coordinates = [coordinates[city] for city in route]
+    route_x, route_y = zip(*[(coords['Longitude'], coords['Latitude']) for coords in route_coordinates])
+    
+    # Plot lines connecting the cities in the route
+    ax.plot(route_x, route_y, 'o-', markersize=10, alpha=0.5, color=node_color, label='Route')
+    
+    # Display the city names on the nodes
+    for x, y, city in zip(route_x, route_y, route):
+        label_y_offset = 0.03  # Adjust this value as needed
+        plt.text(x, y + label_y_offset, city, fontsize=7, ha='center', va='bottom')
+
+    # Set the title at the top
+    plt.title("Display Route Map", y=1.05)
+
+    # Add additional text below the title
+    inform_text = "Blue = Start Town, Red = End Town, Black = Visited Town"
+    plt.text(0.5, 1.02, inform_text, fontsize=12, ha='center', va='center', transform=ax.transAxes)
+
+    # Remove the rectangular frame
+    ax.axis('off')
 
 def searchMethodOption():
     global selected_search_method  # Access the global variable
@@ -262,10 +377,6 @@ def validate_input(start_town, end_town):
 line_canvas2 = tk.Canvas(options_frame, width=350, height=2, bg='black', highlightthickness=0)
 line_canvas2.pack(pady=(30, 0))
 
-# def result_text():
-    
-# result_text()
-
 #Search Method Program Section
 
 ## Read adjacency data from a txt file
@@ -279,13 +390,6 @@ def read_adjacencies(file_path):
     return adjacencies
 
 adjacencies = read_adjacencies('Adjacencies.txt')
-
-# Read coordinates from a CSV file
-def read_coordinates(file_path):
-    coordinates = pd.read_csv(file_path, header=None, names=['City', 'Latitude', 'Longitude'])
-    return coordinates.set_index('City').to_dict(orient='index')
-
-coordinates = read_coordinates('coordinates.csv')
 
 # Calculate the distance between two coordinates using Haversine formula
 def haversine_distance(lat1, lon1, lat2, lon2):
@@ -446,5 +550,6 @@ def a_star_search(start, end, adjacencies, heuristic_value, coordinates):
 
     return None
 
-window.mainloop()
+plt.show()
 
+window.mainloop()
